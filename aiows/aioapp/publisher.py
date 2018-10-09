@@ -17,14 +17,21 @@ class WSPublisher(object):
         TYPE_JSON
     )
 
-    def __init__(self, ws):
+    def __init__(self, icid, ws):
+        self.icid = icid
         self.ws = ws
 
-    async def __call__(self, body, content_type=TYPE_TEXT):
-        if content_type not in self.AVAILABLE_TYPES:
+    def __str__(self):
+        return '<WSPublisher /{}>'.format(self.icid)
+
+    def __repr__(self):
+        return str(self)
+
+    async def __call__(self, content, package_type=TYPE_TEXT):
+        if package_type not in self.AVAILABLE_TYPES:
             raise TypeError('Can not send undefined WS type.')
 
-        return getattr(self, 'send_{}'.format(content_type))(body)
+        return await getattr(self, 'send_{}'.format(package_type))(content)
 
     async def send_json(self, data):
         return await self.ws.send_json(json.dumps(data))

@@ -1,8 +1,17 @@
 # -*- coding: utf-8 -*-
 import uuid
+import logging
 import argparse
 
 from aiohttp import web
+
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='[%(asctime)s][%(name)s][%(levelname)s] %(message)s'
+)
+
+log = logging.getLogger('aiows.main')
 
 
 def set_session(app):
@@ -12,7 +21,7 @@ def set_session(app):
     :return:
     """
     app['ssid'] = 's{}'.format(str(uuid.uuid4())[:8])
-    print('[APP] Session: {}'.format(app['ssid']))
+    log.info('Started new session: {}'.format(app['ssid']))
 
 
 def set_push_password(app, pwd):
@@ -22,7 +31,7 @@ def set_push_password(app, pwd):
     :return:
     """
     app['pwd'] = pwd
-    print('[APP] Push password: "{}"'.format(pwd or 'not set'))
+    log.info('Publisher password: "{}"'.format(pwd or 'not set'))
 
 
 def load_settings(app, args):
@@ -41,9 +50,17 @@ def load_urls(app):
     :param app:
     :return:
     """
+    prefix = app['args'].url_prefix or None
+    if prefix is None:
+        prefix = '/'
+    if not prefix.startswith('/'):
+        prefix = '/{}'.format(prefix)
+    if not prefix.endswith('/'):
+        prefix = '{}/'.format(prefix)
+
     from aiows.aioapp.urls import patterns
     for method, pattern in patterns:
-        pattern[0] = app['args'].url_prefix + pattern[0]
+        pattern[0] = prefix + pattern[0]
         getattr(app.router, 'add_{method}'.format(method=method))(*pattern)
 
 

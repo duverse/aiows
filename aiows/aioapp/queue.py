@@ -1,9 +1,13 @@
 # -*- coding: utf-8 -*-
+import logging
 
 
-class HandlerPool(object):
+log = logging.getLogger('aiows.queue')
+
+
+class MessagePool(object):
     """
-    Channel subscribers manager.
+    Message pool manager.
 
     Allows to add or remove handler to specific channel as well,
     as trigger channel and publish specific package.
@@ -11,69 +15,44 @@ class HandlerPool(object):
     def __init__(self):
         self._handlers = {}
 
-    def add_handler(self, channel, icid, handler):
+    def subscribe(self, channel, icid, handler):
+        channel = self.clean_channel_name(channel)
         if channel not in self._handlers:
             self._handlers[channel] = {}
         self._handlers[channel][icid] = handler
 
-        print('Registered new handler: {}'.format(icid))
-
-    def remove_handler(self, channel, icid):
+    def unsubscribe(self, channel, icid):
+        channel = self.clean_channel_name(channel)
         if channel in self._handlers and icid in self._handlers[channel]:
             del self._handlers[channel][icid]
 
             if not len(self._handlers[channel]):
                 del self._handlers[channel]
 
-        print('Unregistered handler: {}'.format(icid))
-
-    async def trigger_channel(self, channel, *args, **kwargs):
-        print('Can not publish to {}'.format(channel))
-        print(self._handlers)
+    async def share(self, channel, *args, **kwargs):
+        channel = self.clean_channel_name(channel)
         if channel not in self._handlers:
             return
 
+        # Sharing package
         success, errors = (0, 0)
+        unsubscribe = []
 
         for icid, send in self._handlers[channel].items():
             try:
                 await send(*args, **kwargs)
                 success += 1
             except Exception as e:
+                unsubscribe.append(icid)
                 errors += 1
-                self.remove_handler(channel, icid)
 
-        print('[{}] Published: {}'.format(channel, (success, errors)))
+        # Removing invalid channels
+        for icid in unsubscribe:
+            self.unsubscribe(channel, icid)
+
+        log.debug('[] Published: {} / {}'.format(channel, args, kwargs))
 
         return success, errors
-
-
-class MessagePool(object):
-    """
-    Message manager.
-
-    Allows to subscribe or unsubscribe client and publish messages.
-    """
-    def __init__(self, app):
-        self.app = app
-        self.queue = HandlerPool()
-
-    def subscribe(self, channel, icid, handler):
-        self.queue.add_handler(
-            channel=self.clean_channel_name(channel),
-            icid=icid,
-            handler=handler
-        )
-
-    def unsubscribe(self, channel, icid):
-        self.queue.remove_handler(
-            channel=self.clean_channel_name(channel),
-            icid=icid
-        )
-
-    async def publish(self, channel, content, package_type='text'):
-        channel = self.clean_channel_name(channel)
-        return await self.queue.trigger_channel(channel, content, package_type)
 
     @classmethod
     def clean_channel_name(cls, name):

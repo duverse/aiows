@@ -1,10 +1,14 @@
 # -*- coding: utf-8 -*-
+import logging
 from random import randint
 
 import aiohttp
 from aiohttp import web
 
 from aiows.aioapp.publisher import WSPublisher
+
+
+log = logging.getLogger('aiows.api')
 
 
 async def channel_publish(request):
@@ -28,9 +32,13 @@ async def channel_publish(request):
     :param request:
     :return:
     """
+    host, port = request.transport.get_extra_info('peername') or ('Unknown', 'Unknown')
+    log.info('[SHARE][{}] {}:{}'.format(request.path, host, port))
+
     # Check request password
     password = request.query.get('pwd')
     if request.app['pwd'] and password != request.app['pwd']:
+        log.warning('Invalid publisher password "{}"'.format(password))
         return web.Response(
             body='"Not authorized"',
             status=403,
@@ -50,7 +58,7 @@ async def channel_publish(request):
         else:
             message = await request.read()
 
-        await mm.publish(
+        await mm.share(
             channel=request.match_info['channel'],
             content=message,
             package_type=package_type
@@ -62,6 +70,7 @@ async def channel_publish(request):
             content_type='application/json'
         )
     except Exception as e:
+        log.error('Bad request', exc_info=True)
         return web.Response(
             body='"Bad request"',
             status=400,
@@ -93,8 +102,12 @@ async def channel_publish_bulk(request):
     :param request:
     :return:
     """
+    host, port = request.transport.get_extra_info('peername') or ('Unknown', 'Unknown')
+    log.info('[SHARE][{}] {}:{}'.format(request.path, host, port))
+
     password = request.query.get('pwd')
     if request.app['pwd'] and password != request.app['pwd']:
+        log.warning('Invalid publisher password "{}"'.format(password))
         return web.Response(
             body='"Not authorized"',
             status=403,
@@ -108,7 +121,7 @@ async def channel_publish_bulk(request):
         for channel, messages in data.items():
             for pack in messages:
                 package_type, content = pack.items()[0]
-                await mm.publish(channel, content, package_type)
+                await mm.share(channel, content, package_type)
 
         return web.Response(
             body='"OK"',
@@ -116,6 +129,7 @@ async def channel_publish_bulk(request):
             content_type='application/json'
         )
     except Exception as e:
+        log.error('Bad request', exc_info=True)
         return web.Response(
             body='"Bad request"',
             status=400,
@@ -133,6 +147,9 @@ async def channel_subscribe(request):
     :param request:
     :return:
     """
+    host, port = request.transport.get_extra_info('peername') or ('Unknown', 'Unknown')
+    log.info('[LISTEN][{}] {}:{}'.format(request.path, host, port))
+
     mm = request.app['mp']
     channel_name = request.match_info['channel']
 
@@ -143,7 +160,8 @@ async def channel_subscribe(request):
     icid = '{}:{}'.format(channel_name, randint(0, 99999999))
 
     # Subscribe to a channel
-    mm.subscribe(channel_name, icid, WSPublisher(ws))
+    mm.subscribe(channel_name, icid, WSPublisher(icid, ws))
+    log.debug('[{}] Created new handler'.format(icid))
 
     # Subscribe client messages
     try:
@@ -151,16 +169,16 @@ async def channel_subscribe(request):
             if msg.type == aiohttp.WSMsgType.TEXT:
                 if msg.data == 'close':
                     await ws.close()
-                    print('[ws:{}] Closing connection: {}'.format(icid, ws))
+                    log.info('[{}] Connection closed'.format(icid))
             elif msg.type == aiohttp.WSMsgType.ERROR:
-                print('[ws:{}] Connection closed with exception: {}'.format(icid, ws.exception()))
+                log.error('[{}] Connection closed with exception: {}'.format(icid, str(ws.exception())))
     except Exception as e:
-        print('[ws:{}] {}: {}'.format(icid, type(e).__name__, str(e)))
+        log.error('[{}] Connection broken'.format(icid), exc_info=True)
 
     # Closing connection
     try:
         mm.unsubscribe(channel_name, icid)
     except Exception as e:
-        print(e)
+        log.error('[{}] Failed to unsubscribe listener'.format(icid), exc_info=True)
 
     return ws

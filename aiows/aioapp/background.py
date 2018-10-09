@@ -8,7 +8,7 @@ async def message_queue(app):
     :param app:
     :return:
     """
-    app['mp'] = MessagePool(app)
+    app['mp'] = MessagePool()
 
 
 tasks = (

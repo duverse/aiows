@@ -4,7 +4,7 @@ from distutils.core import setup
 
 setup(
     name='aiows',
-    version='0.1a',
+    version='0.1',
     packages=setuptools.find_packages(),
     url='https://github.com/duverse/aiows',
     license='General Public License v3.0',
